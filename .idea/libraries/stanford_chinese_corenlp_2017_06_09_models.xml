@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="stanford-chinese-corenlp-2017-06-09-models">
+    <CLASSES>
+      <root url="jar://F:/worklib/stanford-corenlp-full-2017-06-09/stanford-chinese-corenlp-2017-06-09-models.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
