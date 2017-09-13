@@ -1,19 +1,15 @@
+package paper1;
 
 import com.huaban.analysis.jieba.JiebaSegmenter;
 import com.huaban.analysis.jieba.SegToken;
 import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
-import edu.stanford.nlp.trees.Constituent;
 import edu.stanford.nlp.trees.Tree;
-import edu.stanford.nlp.trees.TypedDependency;
-import edu.stanford.nlp.trees.international.pennchinese.ChineseGrammaticalStructure;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
-import wordsimilarity.WordSimilarity;
+import paper2.cilin.CiLin;
 
 import java.io.*;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Created by sssd on 2017/9/5.
@@ -23,11 +19,21 @@ public class StanfordParser {
     protected  LexicalizedParser lexicalizedParser;
     protected Set STOP_WORD_SET = null;
 
+    /**
+     * 导入Stanford model, 读取停留词
+     * @param modelPath
+     * @param stopPath
+     */
     public StanfordParser(String modelPath, String stopPath){
         lexicalizedParser = LexicalizedParser.loadModel(modelPath);
         readStop(stopPath);
     }
 
+    /**
+     * 获取分词并去除停留词
+     * @param textLine
+     * @return
+     */
     public ArrayList<String> getSplitWord(String textLine) {
         String sentence = textLine;
         JiebaSegmenter segmenter = new JiebaSegmenter();
@@ -45,6 +51,10 @@ public class StanfordParser {
         return list;
     }
 
+    /**
+     * 读取停留词并保存stop_word_set中
+     * @param stopPath
+     */
     public void readStop(String stopPath){
         BufferedReader bufferedReader = null;
         STOP_WORD_SET = new HashSet();
@@ -66,6 +76,13 @@ public class StanfordParser {
         }
     }
 
+    /**
+     * 解析句法树，并保存为map
+     * @param hashMap
+     * @param parent
+     * @param tree
+     * @return
+     */
     public HashMap<String, HashSet<String>> tree2Map(HashMap<String, HashSet<String>> hashMap, Tree parent, Tree tree){
         if(tree.isLeaf()){
             reMap(hashMap, parent);
@@ -82,8 +99,13 @@ public class StanfordParser {
         return hashMap;
     }
 
+    /**
+     * 保存句法树中叶子节点。
+     * @param hashMap
+     * @param parent
+     */
     public void reMap(HashMap<String, HashSet<String>> hashMap, Tree parent) {
-        final String value = parent.getLeaves().toString();
+        final String value = StringUtils.strip(parent.getLeaves().toString(), "[]");
         final String key = parent.value();
         HashSet<String> str;
         if (hashMap.get(key) == null){
@@ -95,6 +117,11 @@ public class StanfordParser {
         hashMap.put(key,str);
     }
 
+    /**
+     * 解析句法树中的从句
+     * @param text
+     * @return
+     */
     public HashMap<String, HashSet<String>> getChild(String text){
         Tree tree = lexicalizedParser.parse(text);
         HashMap<String, HashSet<String>> hashMap = new HashMap<String, HashSet<String>>();
@@ -102,6 +129,12 @@ public class StanfordParser {
         return resultMap;
     }
 
+    /**
+     * 计算语法结构的相似性
+     * @param hashMap1
+     * @param hashMap2
+     * @return
+     */
     public Double structSim(HashMap<String, HashSet<String>> hashMap1, HashMap<String, HashSet<String>> hashMap2){
         int num1 = hashMap1.size();
         int num2 = hashMap2.size();
@@ -117,6 +150,12 @@ public class StanfordParser {
         return result;
     }
 
+    /**
+     * 计算词组位置之间的相似性
+     * @param splitWord1
+     * @param splitWord2
+     * @return
+     */
     public Double wordSim(ArrayList<String> splitWord1, ArrayList<String> splitWord2){
         Double result = 0.0;
         ArrayList<Integer> list1 = new ArrayList<Integer>();
@@ -127,18 +166,8 @@ public class StanfordParser {
         Iterator<String> iterator = hashSet.iterator();
         while(iterator.hasNext()){
             String temp = iterator.next();
-            if ( splitWord1.contains(temp)){
-                list1.add(splitWord1.indexOf(temp));
-            }
-            if( !splitWord1.contains(temp)){
-                list1.add(0);
-            }
-            if (splitWord2.contains(temp)){
-                list2.add(splitWord2.indexOf(temp));
-            }
-            if( !splitWord2.contains(temp)){
-                list2.add(0);
-            }
+            getWordVec(splitWord1, list1, temp);
+            getWordVec(splitWord2, list2, temp);
         }
         double sum1 = 0;
         double sum2 = 0;
@@ -150,6 +179,27 @@ public class StanfordParser {
         return result;
     }
 
+    public void getWordVec(ArrayList<String> splitWord, ArrayList<Integer> list, String temp) {
+        Double simYuzhi = 0.5;
+        Double maxSim = 0.0;
+        int index = 0;
+        for (int i = 0; i < splitWord.size(); i++ ){
+            String s = splitWord.get(i);
+            double wordsSimi = CiLin.calcWordsSimilarity(temp, s);
+            if (wordsSimi > simYuzhi){
+                maxSim = wordsSimi;
+                index = i;
+            }
+        }
+        list.add(index);
+    }
+
+    /**
+     * 结合句法树计算词语的相似性。
+     * @param hashMap1
+     * @param hashMap2
+     * @return
+     */
     public Double structWordSim(HashMap<String, HashSet<String>> hashMap1, HashMap<String, HashSet<String>> hashMap2){
         double pf = 0.1;    //句法结构差异的调节因子
         double ratio = 1.0;  // 结构类型所对应的权重值
@@ -179,13 +229,19 @@ public class StanfordParser {
         return result;
     }
 
+    /**
+     * 计算两词相似性
+     * @param split1
+     * @param split2
+     * @return
+     */
     public Double splitWordSim(String[] split1, String[] split2){
         double sum_split1 = 0.0;
         for (int i = 0; i<split1.length; i++ ){
             String temp1 = split1[i];
             double max1 = 0.0;
             for (int j = 0; j < split2.length; j++ ){
-                double sim1 = WordSimilarity.simWord(temp1, split2[j]);
+                double sim1 = CiLin.calcWordsSimilarity(temp1, split2[j].toString());
                 if(sim1 > max1){
                     max1 = sim1;
                 }
@@ -195,9 +251,16 @@ public class StanfordParser {
         return sum_split1;
     }
 
+    /**
+     * 计算综合相似性
+     * @param structRes
+     * @param wordRes
+     * @param structWordRes
+     * @return
+     */
     public Double finalSim(Double structRes, Double wordRes, Double structWordRes){
-        double a = 0.1;
-        double b = 0.9;
+        double a = 0.2;
+        double b = 0.5;
         double result = 0.0;
         result = a * structRes + (1-a)*(b * structWordRes + (1-b) * wordRes);
         return result;
@@ -222,7 +285,7 @@ public class StanfordParser {
         StanfordParser stanfordParser = new StanfordParser(modelpath, stopPath);
 
 //        String text = "对一名女警做出猥亵动作的男子";
-        String text = "她长成了一位漂亮的女人.";
+        String text = "她穿上这身衣服，显得越发标致．.";
         String text2 = "她长成了一位漂亮的女人.";
 
         Double result = stanfordParser.textSimilarity(text, text2);

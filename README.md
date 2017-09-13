@@ -1,2 +1,2 @@
-sentenceSimilary
+paper1.sentenceSimilary
 ===============

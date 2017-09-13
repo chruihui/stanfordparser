@@ -1,4 +1,4 @@
-package wordsimilarity;
+package paper1.wordsimilarity;
 
 /**
  * Created by sssd on 2017/9/6.

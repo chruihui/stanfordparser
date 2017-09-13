@@ -1,4 +1,4 @@
-package wordsimilarity;
+package paper1.wordsimilarity;
 
 import java.io.*;
 import java.util.ArrayList;

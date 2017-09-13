@@ -6,12 +6,10 @@ import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
 import edu.stanford.nlp.trees.Tree;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
-import wordsimilarity.WordSimilarity;
+import paper1.wordsimilarity.WordSimilarity;
 
 import java.io.*;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Created by sssd on 2017/9/5.
@@ -64,59 +62,50 @@ public class StanfordParserSimhash {
         }
     }
 
-    public HashMap<String, String> getChild(String text){
-        Tree tree = lexicalizedParser.parse(text);
-        Tree treeChild = tree;
-        while ( treeChild.numChildren() < 2 ){
-            treeChild = tree.getChild(0);
+    public HashMap<String, HashSet<String>> tree2Map(HashMap<String, HashSet<String>> hashMap, Tree parent, Tree tree){
+        if(tree.isLeaf()){
+            reMap(hashMap, parent);
+            return hashMap;
         }
-        HashMap<String, String> hashMap = new HashMap<String, String>();
-        for (int i = 0; i<treeChild.numChildren(); i++){
-            Tree temp = treeChild.getChild(i);
-            if (temp.nodeString().toString().equals("IP")){
-                for (int j = 0; j < temp.numChildren(); j++){
-                    Tree tempChild = temp.getChild(j);
-                    String str = tempChild.nodeString();   // 获取节点树中的从句类型
-                    String value = tempChild.toString();
-                    String tempString = value.replaceAll("[^0-9\u4e00-\u9fa5.，,。？“”]+","");
-                    Pattern pattern = Pattern.compile(" {2,}");
-                    Matcher mLine = pattern.matcher(tempString);
-                    String substring = mLine.replaceAll(" ").trim();
-                    if (!hashMap.containsKey(str)){
-                        hashMap.put(str, substring);
-                    }else{
-                        String tempStr =  hashMap.get(str);
-                        tempStr = tempStr + " " + substring;
-                        hashMap.put(str, tempStr);
-                    }
-                }
-            }else {
-                String str = temp.nodeString();   // 获取节点树中的从句类型
-                String value = temp.toString();
-                String tempString = value.replaceAll("[^0-9\u4e00-\u9fa5.，,。？“” ]+","");
-                Pattern pattern = Pattern.compile(" {2,}");
-                Matcher mLine = pattern.matcher(tempString);
-                String substring = mLine.replaceAll(" ").trim();
-                if (!hashMap.containsKey(str)){
-                    hashMap.put(str, substring);
-                }else{
-                    String tempStr =  hashMap.get(str);
-                    tempStr = tempStr + " " + substring;
-                    hashMap.put(str, tempStr);
-                }
+        if (tree.isPhrasal()){
+            Tree[] children = tree.children();
+            for (Tree child : children) {
+                tree2Map(hashMap, tree, child);
             }
+        }else{
+            reMap(hashMap, parent);
         }
         return hashMap;
     }
 
-    public Double structSim(HashMap<String, String> hashMap1, HashMap<String, String> hashMap2){
+    public void reMap(HashMap<String, HashSet<String>> hashMap, Tree parent) {
+        final String value = StringUtils.strip(parent.getLeaves().toString(), "[]");
+        final String key = parent.value();
+        HashSet<String> str;
+        if (hashMap.get(key) == null){
+            str = new HashSet<String>();
+        }else{
+            str = hashMap.get(key);
+        }
+        str.add(value);
+        hashMap.put(key,str);
+    }
+
+    public HashMap<String, HashSet<String>> getChild(String text){
+        Tree tree = lexicalizedParser.parse(text);
+        HashMap<String, HashSet<String>> hashMap = new HashMap<String, HashSet<String>>();
+        HashMap<String, HashSet<String>> resultMap = tree2Map(hashMap, tree, tree);
+        return resultMap;
+    }
+
+    public Double structSim(HashMap<String, HashSet<String>> hashMap1, HashMap<String, HashSet<String>> hashMap2){
         int num1 = hashMap1.size();
         int num2 = hashMap2.size();
         int commen = 0;
         double result = 0.0;
-        for(Map.Entry<String, String> entry : hashMap1.entrySet()){
-            String value = entry.getValue();
-            if (hashMap2.containsValue(value)){
+        for(Map.Entry<String, HashSet<String>> entry : hashMap1.entrySet()){
+            String key = entry.getKey();
+            if (hashMap2.containsKey(key)){
                 commen ++;
             }
         }
@@ -173,13 +162,13 @@ public class StanfordParserSimhash {
         return sum_split1;
     }
 
-    public Double structWordSim(HashMap<String, String> hashMap1, HashMap<String, String> hashMap2){
+    public Double structWordSim(HashMap<String, HashSet<String>> hashMap1, HashMap<String, HashSet<String>> hashMap2){
         double pf = 0.1;    //句法结构差异的调节因子
         double ratio = 1.0;  // 结构类型所对应的权重值
         Set<String> set1 = hashMap1.keySet();
         Set<String> set2 = hashMap2.keySet();
-        Set<String> tempSet = set1;   //表示有相同的语句结构
-        tempSet.contains(set2);
+        Set<String> tempSet = new HashSet<String>(set1);   //表示有相同的语句结构
+        tempSet.retainAll(set2);
         int commen = tempSet.size();
         int noSameCount = set1.size() + set2.size() - commen;
 
@@ -187,8 +176,11 @@ public class StanfordParserSimhash {
         double sim_S = 0.0;
         while (iterator.hasNext()){
             String key = iterator.next();
-            String str1 = hashMap1.get(key);
-            String str2 = hashMap2.get(key);
+            HashSet<String> value1 = hashMap1.get(key);
+            HashSet<String> value2 = hashMap2.get(key);
+            String str1 =  set2String(value1);
+            String str2 = set2String(value2);
+            System.out.println(str1);
             SimHash hash1 = null;
             SimHash hash2 = null;
             try {
@@ -197,12 +189,19 @@ public class StanfordParserSimhash {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            int distance = hash1.hammingDistance(hash2);
-            Double hashSim = (double)(1 - distance/64.0);
+            Double hashSim = 0.0;
             sim_S += ratio * hashSim;
         }
         double result = sim_S/tempSet.size() - pf * noSameCount;
         return result;
+    }
+
+    public String set2String(HashSet<String> value) {
+        StringBuffer str = new StringBuffer();
+        for (String s : value) {
+            str.append(s);
+        }
+        return str.toString();
     }
 
     public Double finalSim(Double structRes, Double wordRes, Double structWordRes){
@@ -222,9 +221,8 @@ public class StanfordParserSimhash {
         String text = "今天天气非常好";
         String text2 = "今天阳光明媚";
 
-        HashMap<String, String> hashMap1 = stanfordParser.getChild(text);
-        HashMap<String, String> hashMap2 = stanfordParser.getChild(text2);
-
+        HashMap<String, HashSet<String>> hashMap1 = stanfordParser.getChild(text);
+        HashMap<String, HashSet<String>> hashMap2 = stanfordParser.getChild(text2);
         Double structRes = stanfordParser.structSim(hashMap1, hashMap2);
         System.out.println("structRes: " + structRes);
 

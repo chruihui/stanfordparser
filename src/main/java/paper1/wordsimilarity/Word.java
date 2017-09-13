@@ -1,4 +1,4 @@
-package wordsimilarity;
+package paper1.wordsimilarity;
 
 import java.util.ArrayList;
 import java.util.HashMap;

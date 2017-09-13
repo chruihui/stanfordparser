@@ -1,3 +1,4 @@
+package paper1;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
